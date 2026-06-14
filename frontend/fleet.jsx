@@ -1,6 +1,7 @@
 // Fleet view — operations / mission control feel: dense, multi-pane, map-forward
 
 const FleetOverview = ({ vehicles, onSelectVehicle }) => {
+  const alerts = useFleetAlerts();
   const counts = React.useMemo(() => {
     const c = { active: 0, idle: 0, offline: 0 };
     vehicles.forEach(v => c[v.status]++);
@@ -36,7 +37,7 @@ const FleetOverview = ({ vehicles, onSelectVehicle }) => {
         <StatCard label="Trips today" value={trips} icon="route" sub="vs 612 yesterday" trend={{ dir: "up", label: "+4.2%" }} />
         <StatCard label="ADAS incidents · today" value={incidents} icon="alert" sub="3 critical" />
         <StatCard label="Fleet safety score" value={fleetScore} icon="shield" trend={{ dir: fleetScore >= 85 ? "up" : "down", label: fleetScore >= 85 ? "Healthy" : "Watch" }} />
-        <StatCard label="Open alerts" value={FLEET_ALERTS.length} icon="bell" sub={`${FLEET_ALERTS.filter(a=>a.sev==="crit").length} critical`} />
+        <StatCard label="Open alerts" value={alerts.length} icon="bell" sub={`${alerts.filter(a=>a.sev==="crit").length} critical`} />
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "1.6fr 1fr", gap: "var(--gap)" }}>
@@ -101,7 +102,7 @@ const FleetOverview = ({ vehicles, onSelectVehicle }) => {
             </span>
           </div>
           <div style={{ flex: 1, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8, maxHeight: 460 }}>
-            {FLEET_ALERTS.map(a => <AlertRow key={a.id} alert={a} compact onClick={() => a.vehicle && onSelectVehicle(a.vehicle)} />)}
+            {alerts.map(a => <AlertRow key={a.id} alert={a} compact onClick={() => a.vehicle && onSelectVehicle(a.vehicle)} />)}
           </div>
         </div>
       </div>
@@ -268,14 +269,15 @@ const FleetVehicles = ({ vehicles, onSelectVehicle }) => {
 
 // ─── FLEET · ALERTS ────────────────────────────────────────────────
 const FleetAlerts = ({ onSelectVehicle }) => {
+  const alerts = useFleetAlerts();
   const [filter, setFilter] = React.useState("all");
-  const filtered = filter === "all" ? FLEET_ALERTS : FLEET_ALERTS.filter(a => a.sev === filter);
+  const filtered = filter === "all" ? alerts : alerts.filter(a => a.sev === filter);
   return (
     <div className="grid" style={{ gridTemplateColumns: "1fr", gap: "var(--gap)" }}>
       <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        <StatCard label="Critical" value={FLEET_ALERTS.filter(a => a.sev === "crit").length} icon="alert" />
-        <StatCard label="Warning" value={FLEET_ALERTS.filter(a => a.sev === "warn").length} icon="bell" />
-        <StatCard label="Info" value={FLEET_ALERTS.filter(a => a.sev === "info").length} icon="broadcast" />
+        <StatCard label="Critical" value={alerts.filter(a => a.sev === "crit").length} icon="alert" />
+        <StatCard label="Warning" value={alerts.filter(a => a.sev === "warn").length} icon="bell" />
+        <StatCard label="Info" value={alerts.filter(a => a.sev === "info").length} icon="broadcast" />
         <StatCard label="Avg response time" value="4.2" unit="min" sub="rolling 24h" />
       </div>
       <div className="card card-flush">

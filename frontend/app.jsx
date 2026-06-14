@@ -27,7 +27,12 @@ function App() {
     document.documentElement.style.setProperty("--accent-line", `color-mix(in oklch, ${tweaks.accent} 32%, transparent)`);
   }, [tweaks.theme, tweaks.density, tweaks.accent]);
 
-  const fleetSlice = React.useMemo(() => ALL_VEHICLES.slice(0, tweaks.fleetSize), [tweaks.fleetSize]);
+  // Live data from the simulation store (sim.jsx). Swapping these hooks for a
+  // real backend/car feed later is a one-line change — the store stays put.
+  const fleet = useFleet();
+  const car = useDriverCar();
+  const fleetAlerts = useFleetAlerts();
+  const fleetSlice = React.useMemo(() => fleet.slice(0, tweaks.fleetSize), [fleet, tweaks.fleetSize]);
 
   // ─── view + section state ───────────────────────────────────────
   const [view, setView] = React.useState("driver");
@@ -39,11 +44,17 @@ function App() {
   const [fleetSection, setFleetSection] = React.useState("overview");
   const [selectedVehicleId, setSelectedVehicleId] = React.useState(null);
 
-  // ─── driver vehicle state ───────────────────────────────────────
-  const [locked, setLocked] = React.useState(MY_CAR.locked);
-  const [acOn, setAcOn] = React.useState(MY_CAR.acOn);
-  const [targetTemp, setTargetTemp] = React.useState(MY_CAR.targetTemp);
-  const [charging, setCharging] = React.useState(MY_CAR.charging);
+  // ─── driver vehicle state (controls = outbound commands to the car) ──
+  const [locked, setLocked] = React.useState(car.locked);
+  const [acOn, setAcOn] = React.useState(car.acOn);
+  const [targetTemp, setTargetTemp] = React.useState(car.targetTemp);
+  const [charging, setCharging] = React.useState(car.charging);
+
+  // Push control changes into the sim so the car responds (charging fills the
+  // battery, A/C eases the cabin temp). This is the seam a real car receives.
+  React.useEffect(() => {
+    if (window.SENTRY) window.SENTRY.command({ locked, acOn, targetTemp, charging });
+  }, [locked, acOn, targetTemp, charging]);
 
   const driverNav = [
     { id: "home", label: "Home", icon: "gauge" },
@@ -56,7 +67,7 @@ function App() {
   const fleetNav = [
     { id: "overview", label: "Overview", icon: "grid" },
     { id: "vehicles", label: "Vehicles", icon: "fleet", badge: String(tweaks.fleetSize) },
-    { id: "alerts", label: "Alerts", icon: "bell", badge: String(FLEET_ALERTS.filter(a => a.sev === "crit").length) },
+    { id: "alerts", label: "Alerts", icon: "bell", badge: String(fleetAlerts.filter(a => a.sev === "crit").length) },
   ];
 
   const onSelectVehicle = (id) => {
@@ -70,11 +81,11 @@ function App() {
 
   // ─── render ──────────────────────────────────────────────────────
   const renderDriver = () => {
-    if (driverSection === "home") return <DriverHome car={MY_CAR} locked={locked} setLocked={setLocked} acOn={acOn} setAcOn={setAcOn} targetTemp={targetTemp} setTargetTemp={setTargetTemp} charging={charging} setCharging={setCharging} goTo={setDriverSection} />;
-    if (driverSection === "controls") return <DriverControls car={MY_CAR} locked={locked} setLocked={setLocked} acOn={acOn} setAcOn={setAcOn} targetTemp={targetTemp} setTargetTemp={setTargetTemp} charging={charging} setCharging={setCharging} />;
+    if (driverSection === "home") return <DriverHome car={car} locked={locked} setLocked={setLocked} acOn={acOn} setAcOn={setAcOn} targetTemp={targetTemp} setTargetTemp={setTargetTemp} charging={charging} setCharging={setCharging} goTo={setDriverSection} />;
+    if (driverSection === "controls") return <DriverControls car={car} locked={locked} setLocked={setLocked} acOn={acOn} setAcOn={setAcOn} targetTemp={targetTemp} setTargetTemp={setTargetTemp} charging={charging} setCharging={setCharging} />;
     if (driverSection === "trips") return <DriverTrips />;
     if (driverSection === "score") return <DriverScore />;
-    if (driverSection === "health") return <DriverHealth car={MY_CAR} />;
+    if (driverSection === "health") return <DriverHealth car={car} />;
   };
 
   const renderFleet = () => {
@@ -82,7 +93,7 @@ function App() {
     if (fleetSection === "vehicles") return <FleetVehicles vehicles={fleetSlice} onSelectVehicle={onSelectVehicle} />;
     if (fleetSection === "alerts") return <FleetAlerts onSelectVehicle={onSelectVehicle} />;
     if (fleetSection === "detail") {
-      const v = fleetSlice.find(x => x.id === selectedVehicleId) || ALL_VEHICLES.find(x => x.id === selectedVehicleId);
+      const v = fleetSlice.find(x => x.id === selectedVehicleId) || fleet.find(x => x.id === selectedVehicleId);
       return <FleetVehicleDetail vehicle={v} onBack={onBackFromDetail} />;
     }
   };

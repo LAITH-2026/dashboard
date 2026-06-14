@@ -354,7 +354,7 @@ const DriverTrips = () => (
 
 // ─── DRIVER · DRIVING SCORE ───────────────────────────────────────
 const DriverScore = () => {
-  const s = DRIVING_SCORE;
+  const s = useDrivingScore();
   return (
     <div className="grid" style={{ gridTemplateColumns: "1.1fr 1fr", gap: "var(--gap)" }}>
       <div className="card">

@@ -147,6 +147,7 @@ function MapPlaceholder({ pins = [], height = 320, focusId, onPinClick, label = 
               left: `${p.x * 100}%`,
               top: `${p.y * 100}%`,
               transform: "translate(-50%, -50%)",
+              transition: "left 1.4s linear, top 1.4s linear",
               padding: 0,
               background: "transparent",
               border: "none",
