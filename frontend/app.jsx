@@ -34,6 +34,25 @@ function App() {
   const fleetAlerts = useFleetAlerts();
   const fleetSlice = React.useMemo(() => fleet.slice(0, tweaks.fleetSize), [fleet, tweaks.fleetSize]);
 
+  // Backend connectivity probe — proves the frontend reads the SQLite-backed API.
+  // (The live fleet still renders from sim.jsx; swapping the store to this feed is step 3.)
+  const [backend, setBackend] = React.useState({ state: "connecting" });
+  React.useEffect(() => {
+    let alive = true;
+    window.SentryAPI.getVehicles()
+      .then((r) => {
+        if (!alive) return;
+        setBackend({ state: "online", count: r.count, source: r.source });
+        console.info(`[backend] /api/vehicles → ${r.count} vehicles (source: ${r.source})`, r.vehicles.slice(0, 3));
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setBackend({ state: "offline", error: String(e) });
+        console.warn("[backend] /api/vehicles unreachable:", e);
+      });
+    return () => { alive = false; };
+  }, []);
+
   // ─── view + section state ───────────────────────────────────────
   const [view, setView] = React.useState("driver");
 
@@ -114,6 +133,13 @@ function App() {
 
   const head = view === "driver" ? driverHeads[driverSection] : fleetHeads[fleetSection];
 
+  const backendPill = (
+    <span className="badge" title={backend.error || (backend.source ? `source: ${backend.source}` : "")}>
+      <span className={"sev-dot " + (backend.state === "online" ? "ok" : backend.state === "offline" ? "crit" : "")} />
+      {backend.state === "online" ? `Backend · ${backend.count}` : backend.state === "offline" ? "Backend offline" : "Backend…"}
+    </span>
+  );
+
   return (
     <div className="app">
       <TopBar view={view} setView={setView} theme={tweaks.theme} accent={tweaks.accent} />
@@ -135,14 +161,15 @@ function App() {
         )}
         <main className="main" key={view + "-" + (view === "driver" ? driverSection : fleetSection + "-" + (selectedVehicleId || ""))}>
           <PageHead {...head} actions={
-            view === "fleet" && fleetSection !== "detail" ? (
-              <>
-                <button className="btn btn-ghost" style={{ padding: "8px 12px", fontSize: 12 }}><Icon name="download" size={12} /> Export</button>
-                <button className="btn" style={{ padding: "8px 12px", fontSize: 12 }}><Icon name="filter" size={12} /> Filters</button>
-              </>
-            ) : view === "driver" && driverSection === "home" ? (
-              <span className="badge"><span className="sev-dot ok" />Connected · 5G</span>
-            ) : null
+            <>
+              {backendPill}
+              {view === "fleet" && fleetSection !== "detail" ? (
+                <>
+                  <button className="btn btn-ghost" style={{ padding: "8px 12px", fontSize: 12 }}><Icon name="download" size={12} /> Export</button>
+                  <button className="btn" style={{ padding: "8px 12px", fontSize: 12 }}><Icon name="filter" size={12} /> Filters</button>
+                </>
+              ) : null}
+            </>
           } />
           <div className="fade-up">
             {view === "driver" ? renderDriver() : renderFleet()}
