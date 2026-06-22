@@ -35,6 +35,7 @@
       lastActivity: relTime(v.ts),
       location: v.location_label,
       incidents: v.incidents,
+      source: v.source,
     };
   }
 

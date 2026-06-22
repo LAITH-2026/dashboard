@@ -9,6 +9,7 @@ const TICK_MS = 1500;
 const KM_PER_PCT = 5.47;
 const ALERT_GATE = 0.45;       // chance a generated event reaches the feed
 const FLEET_EVENT_CAP = 60;    // keep the fleet feed bounded
+const CARLA_TTL_MS = 6000;     // a vehicle with a CARLA frame newer than this is owned by ingest
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -43,6 +44,8 @@ const updMyCar = db.prepare(`
     cabin_temp_c=@cabin, locked=@locked, ac_on=@ac_on, charging=@charging
   WHERE vehicle_id=@id
 `);
+
+const carlaFedStmt = db.prepare("SELECT vehicle_id FROM vehicle_current WHERE source='carla' AND ts > ?");
 
 let fleet = [];
 let myCar = null;
@@ -143,7 +146,10 @@ function stepVehicle(v) {
 
 const runTick = db.transaction(() => {
   let generated = 0;
+  const cutoff = new Date(Date.now() - CARLA_TTL_MS).toISOString();
+  const carlaFed = new Set(carlaFedStmt.all(cutoff).map((r) => r.vehicle_id));
   for (const v of fleet) {
+    if (carlaFed.has(v.id)) continue; // CARLA owns this one — don't overwrite its frames
     const events = stepVehicle(v);
     upsert.run({
       vehicle_id: v.id,

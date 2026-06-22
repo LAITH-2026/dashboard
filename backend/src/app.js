@@ -4,6 +4,7 @@ const cors = require("cors");
 
 const fleetRoutes = require("./routes/fleet");
 const driverRoutes = require("./routes/driver");
+const ingestRoutes = require("./routes/ingest");
 
 function createApp() {
   const app = express();
@@ -19,6 +20,7 @@ function createApp() {
   });
 
   app.use("/api", fleetRoutes);
+  app.use("/api", ingestRoutes);
   app.use("/api/driver", driverRoutes);
 
   // Unknown /api/* paths → JSON 404 (instead of HTML).

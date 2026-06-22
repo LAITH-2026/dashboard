@@ -140,6 +140,13 @@ function App() {
     </span>
   );
 
+  const liveCount = React.useMemo(() => fleet.filter((v) => v.source === "carla").length, [fleet]);
+  const livePill = liveCount > 0 ? (
+    <span className="badge" title="Vehicles fed live from CARLA">
+      <span className="sev-dot ok" />Live · {liveCount} CARLA
+    </span>
+  ) : null;
+
   return (
     <div className="app">
       <TopBar view={view} setView={setView} theme={tweaks.theme} accent={tweaks.accent} />
@@ -163,6 +170,7 @@ function App() {
           <PageHead {...head} actions={
             <>
               {backendPill}
+              {livePill}
               {view === "fleet" && fleetSection !== "detail" ? (
                 <>
                   <button className="btn btn-ghost" style={{ padding: "8px 12px", fontSize: 12 }}><Icon name="download" size={12} /> Export</button>
