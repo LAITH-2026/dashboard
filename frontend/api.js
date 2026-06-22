@@ -20,5 +20,6 @@
     },
     getVehicle: (code) => get("/api/vehicles/" + encodeURIComponent(code)),
     getFleetAlerts: () => get("/api/fleet/alerts"),
+    getFleetLive: () => get("/api/fleet/live"),
   };
 })();

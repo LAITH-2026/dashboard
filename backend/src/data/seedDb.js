@@ -30,9 +30,11 @@ const seed = db.transaction(() => {
   const insCurrent = db.prepare(`
     INSERT INTO vehicle_current
       (vehicle_id, ts, source, lat, lon, world_x, world_y, heading_deg, speed_kmh, status,
-       safety_score, battery_pct, fuel_pct, range_km, cabin_temp_c, odometer_km, locked, ac_on, charging)
+       safety_score, battery_pct, fuel_pct, range_km, cabin_temp_c, odometer_km, locked, ac_on, charging,
+       location_label, incidents)
     VALUES (@vehicle_id,@ts,@source,@lat,@lon,@world_x,@world_y,@heading_deg,@speed_kmh,@status,
-       @safety_score,@battery_pct,@fuel_pct,@range_km,@cabin_temp_c,@odometer_km,@locked,@ac_on,@charging)
+       @safety_score,@battery_pct,@fuel_pct,@range_km,@cabin_temp_c,@odometer_km,@locked,@ac_on,@charging,
+       @location_label,@incidents)
   `);
   const codeId = {};
 
@@ -47,6 +49,7 @@ const seed = db.transaction(() => {
       battery_pct: v.battery, fuel_pct: v.fuel,
       range_km: v.battery != null ? Math.round(v.battery * KM_PER_PCT) : null,
       cabin_temp_c: null, odometer_km: null, locked: null, ac_on: null, charging: null,
+      location_label: v.location, incidents: v.incidents,
     });
   }
 
@@ -60,6 +63,7 @@ const seed = db.transaction(() => {
     battery_pct: MY_CAR.battery, fuel_pct: null, range_km: MY_CAR.range,
     cabin_temp_c: MY_CAR.cabinTemp, odometer_km: MY_CAR.odometer,
     locked: MY_CAR.locked ? 1 : 0, ac_on: MY_CAR.acOn ? 1 : 0, charging: MY_CAR.charging ? 1 : 0,
+    location_label: MY_CAR.lastLocation, incidents: 0,
   });
 
   db.prepare(`INSERT INTO vehicle_specs

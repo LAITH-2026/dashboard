@@ -94,7 +94,9 @@ CREATE TABLE vehicle_current (
   odometer_km   INTEGER,                         -- [synth] integrated distance
   locked        INTEGER,                         -- [control] reflected actual
   ac_on         INTEGER,                         -- [control]
-  charging      INTEGER                          -- [control]
+  charging      INTEGER,                         -- [control]
+  location_label TEXT,                           -- [synth] human area label (until reverse-geocode)
+  incidents     INTEGER NOT NULL DEFAULT 0       -- [synth] per-vehicle incident count
 );
 CREATE INDEX ix_current_status ON vehicle_current(status);
 
