@@ -1,24 +1,18 @@
-// Live data layer.
+// Live data layer — backend feed adapter + store. (No local simulation anymore.)
 //
-// As of step 3 the FLEET (vehicles + fleet alerts) is driven by the BACKEND:
-// the server runs the simulation engine, writes vehicle_current + events, and
-// this file POLLS /api/fleet/live and pushes the result into the store. The
-// driver CAR + driving SCORE are still simulated locally here (they move to the
-// backend in step 4, together with the control seam).
-//
-//   STORE  — canonical state + React glue (useSyncExternalStore hooks)
-//   LOCAL  — stepCar + score jitter (driver-side, temporary)
-//   FEED   — pollFleet() (backend → page) + window.SENTRY (command/ingest seams)
-//
-// Components are unchanged: they still read useFleet / useDriverCar /
-// useFleetAlerts / useDrivingScore.
+// As of step 4 the ENTIRE dashboard reads from the backend:
+//   FLEET  vehicles + alerts        ← poll /api/fleet/live
+//   DRIVER car + driving score      ← poll /api/driver/car + /api/driver/score
+//   driver alerts + trips           ← fetched once (static lists)
+//   control toggles (lock/AC/…)     → POST /api/driver/command (debounced)
+// The server-side engine owns all simulation. Components are unchanged; they read
+// useFleet / useDriverCar / useFleetAlerts / useDrivingScore / useDriverAlerts /
+// useTrips. Seed globals (data.jsx) provide an instant first paint until the
+// first poll lands.
 
 (function () {
-  const TICK_MS = 1500;   // local car/score tick
-  const POLL_MS = 1500;   // backend fleet poll
-  const KM_PER_PCT = 5.47;
-
-  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  const FLEET_MS = 1500;
+  const DRIVER_MS = 1500;
 
   function relTime(iso) {
     if (!iso) return "";
@@ -31,9 +25,8 @@
   }
 
   // Backend canonical vehicle → the shape the components consume. The 0-1 map
-  // coords are reconstructed from world-meters until the map is reworked for
-  // real tiles / a town minimap (step 6).
-  function adapt(v) {
+  // coords are reconstructed from world-meters until the map rework (step 6).
+  function adaptVehicle(v) {
     return {
       id: v.code, make: v.make, model: v.model, type: v.type, driver: v.driver,
       status: v.status, score: v.safety_score,
@@ -46,8 +39,6 @@
   }
 
   // ─── STORE ──────────────────────────────────────────────────────────────
-  // Seeded from data.jsx for an instant first paint; the fleet is replaced by
-  // the first backend poll a moment later.
   function buildInitialState() {
     const vehicles = (window.ALL_VEHICLES || []).map((v) => ({ ...v, coords: { ...v.coords } }));
     const car = { ...(window.MY_CAR || {}), tirePsi: { ...((window.MY_CAR || {}).tirePsi || {}) } };
@@ -55,7 +46,9 @@
     const score = window.DRIVING_SCORE
       ? { ...window.DRIVING_SCORE, weekTrend: [...window.DRIVING_SCORE.weekTrend] }
       : null;
-    return { vehicles, car, alerts, score, t: 0 };
+    const driverAlerts = (window.ALERTS_DRIVER || []).map((a) => ({ ...a }));
+    const trips = (window.TRIPS || []).map((t) => ({ ...t }));
+    return { vehicles, car, alerts, score, driverAlerts, trips };
   }
 
   let state = buildInitialState();
@@ -64,95 +57,72 @@
   const emit = () => listeners.forEach((l) => l());
   function subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }
 
-  // ─── LOCAL ENGINE (driver car + score only — backend owns the fleet) ──────
-  const kin = { car: { battery: state.car.battery } };
-  let externalCar = false;
-  let cmd = {
-    locked: !!state.car.locked,
-    acOn: !!state.car.acOn,
-    targetTemp: state.car.targetTemp || 21,
-    charging: !!state.car.charging,
-  };
+  // ─── FEED: poll the backend ───────────────────────────────────────────────
+  let warnedFleet = false, warnedDriver = false;
 
-  function stepCar(prev) {
-    if (externalCar) return prev;
-    const c = { ...prev };
-    let battery = kin.car.battery;
-    if (cmd.charging) { c.charging = true; battery = Math.min(c.chargeTo, battery + 0.6); }
-    else { c.charging = false; battery = clamp(battery - 0.04, 0, 100); }
-    kin.car.battery = battery;
-    c.battery = Math.round(battery);
-    c.range = Math.round(battery * KM_PER_PCT);
-    const goal = cmd.acOn ? cmd.targetTemp : 24;
-    c.cabinTemp = Math.round(c.cabinTemp + (goal - c.cabinTemp) * 0.25);
-    c.acOn = cmd.acOn;
-    c.targetTemp = cmd.targetTemp;
-    c.locked = cmd.locked;
-    c.lastUpdated = "just now";
-    return c;
-  }
-
-  function tick() {
-    const t = state.t + TICK_MS / 1000;
-    const car = stepCar(state.car);
-    let score = state.score;
-    if (score && Math.random() < 0.1) {
-      const cur = clamp(score.current + (Math.random() < 0.5 ? -1 : 1), 70, 99);
-      score = { ...score, current: cur, weekTrend: [...score.weekTrend.slice(1), cur] };
-    }
-    state = { ...state, car, score, t };
-    emit();
-  }
-
-  // ─── FEED: poll the backend for the live fleet ────────────────────────────
-  let warnedOffline = false;
   async function pollFleet() {
     try {
       const live = await window.SentryAPI.getFleetLive();
-      state = { ...state, vehicles: live.vehicles.map(adapt), alerts: live.alerts };
+      state = { ...state, vehicles: live.vehicles.map(adaptVehicle), alerts: live.alerts };
       emit();
-      warnedOffline = false;
+      warnedFleet = false;
     } catch (e) {
-      if (!warnedOffline) { console.warn("[sim] fleet poll failed; keeping last state:", e); warnedOffline = true; }
+      if (!warnedFleet) { console.warn("[feed] fleet poll failed; keeping last state:", e); warnedFleet = true; }
     }
   }
 
-  let tickTimer = null, pollTimer = null, rate = 1;
+  async function pollDriver() {
+    try {
+      const [car, score] = await Promise.all([
+        window.SentryAPI.getDriverCar(),
+        window.SentryAPI.getDriverScore(),
+      ]);
+      state = { ...state, car, score };
+      emit();
+      warnedDriver = false;
+    } catch (e) {
+      if (!warnedDriver) { console.warn("[feed] driver poll failed; keeping last state:", e); warnedDriver = true; }
+    }
+  }
+
+  async function loadStatics() {
+    try {
+      const [a, t] = await Promise.all([
+        window.SentryAPI.getDriverAlerts(),
+        window.SentryAPI.getDriverTrips(),
+      ]);
+      state = { ...state, driverAlerts: a.alerts, trips: t.trips };
+      emit();
+    } catch (e) {
+      console.warn("[feed] driver statics failed; using seed:", e);
+    }
+  }
+
+  let fleetTimer = null, driverTimer = null;
   function start() {
     stop();
-    tickTimer = setInterval(tick, TICK_MS / rate);
-    pollTimer = setInterval(pollFleet, POLL_MS);
-    pollFleet(); // first backend paint asap
+    fleetTimer = setInterval(pollFleet, FLEET_MS);
+    driverTimer = setInterval(pollDriver, DRIVER_MS);
+    pollFleet(); pollDriver(); loadStatics();
   }
   function stop() {
-    if (tickTimer) clearInterval(tickTimer);
-    if (pollTimer) clearInterval(pollTimer);
-    tickTimer = pollTimer = null;
+    if (fleetTimer) clearInterval(fleetTimer);
+    if (driverTimer) clearInterval(driverTimer);
+    fleetTimer = driverTimer = null;
   }
 
-  // The driver car may still be fed by a real source via ingest() (step 4+).
-  function ingest(frame) {
-    if (!frame || frame.id == null) return;
-    if (frame.id === "car" || frame.id === "MY_CAR") {
-      externalCar = true;
-      const { id, ...rest } = frame;
-      state = { ...state, car: { ...state.car, ...rest, source: "external", lastUpdated: "just now" } };
-      emit();
-    }
+  // ─── outbound control seam (page → car), debounced ────────────────────────
+  let cmdPending = null, cmdTimer = null;
+  function command(next) {
+    cmdPending = { ...(cmdPending || {}), ...next };
+    if (cmdTimer) return;
+    cmdTimer = setTimeout(() => {
+      const payload = cmdPending; cmdPending = null; cmdTimer = null;
+      window.SentryAPI.sendCommand(payload).catch((e) => console.warn("[feed] command failed:", e));
+    }, 250);
   }
 
-  // The driver UI pushes control changes here (outbound command seam).
-  function command(next) { cmd = { ...cmd, ...next }; }
-
-  window.SENTRY = {
-    ingest,
-    command,
-    pause: stop,
-    resume: start,
-    setRate(m) { rate = m || 1; if (tickTimer) start(); },
-    getState,
-    subscribe,
-  };
+  window.SENTRY = { command, pause: stop, resume: start, getState, subscribe };
 
   // ─── REACT HOOKS ──────────────────────────────────────────────────────────
   const { useSyncExternalStore } = React;
@@ -160,8 +130,12 @@
   function useDriverCar() { return useSyncExternalStore(subscribe, () => getState().car); }
   function useFleetAlerts() { return useSyncExternalStore(subscribe, () => getState().alerts); }
   function useDrivingScore() { return useSyncExternalStore(subscribe, () => getState().score); }
+  function useDriverAlerts() { return useSyncExternalStore(subscribe, () => getState().driverAlerts); }
+  function useTrips() { return useSyncExternalStore(subscribe, () => getState().trips); }
 
-  Object.assign(window, { useFleet, useDriverCar, useFleetAlerts, useDrivingScore });
+  Object.assign(window, {
+    useFleet, useDriverCar, useFleetAlerts, useDrivingScore, useDriverAlerts, useTrips,
+  });
 
   start();
 })();

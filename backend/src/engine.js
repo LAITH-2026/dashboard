@@ -34,8 +34,18 @@ const pruneEvents = db.prepare(`
     SELECT id FROM events WHERE audience='fleet' ORDER BY ts DESC, id DESC LIMIT ?
   )
 `);
+const getDesired = db.prepare(
+  "SELECT locked, ac_on, target_temp_c, charging FROM vehicle_desired_state WHERE vehicle_id = ?"
+);
+const updMyCar = db.prepare(`
+  UPDATE vehicle_current SET
+    ts=@ts, source='simulated', battery_pct=@battery, range_km=@range,
+    cabin_temp_c=@cabin, locked=@locked, ac_on=@ac_on, charging=@charging
+  WHERE vehicle_id=@id
+`);
 
 let fleet = [];
+let myCar = null;
 
 // Load the working set from vehicle_current (seeded, or whatever's current).
 function load() {
@@ -59,6 +69,18 @@ function load() {
       : r.status === "idle" ? now - rand(3, 45) * 60000
       : now - rand(2, 42) * 3600000,
   }));
+
+  const mc = db.prepare(`
+    SELECT c.vehicle_id AS id, c.battery_pct, c.cabin_temp_c, s.charge_target_pct, s.km_per_pct
+    FROM vehicle_current c
+    JOIN vehicles v ON v.id = c.vehicle_id
+    LEFT JOIN vehicle_specs s ON s.vehicle_id = c.vehicle_id
+    WHERE v.is_my_car = 1
+  `).get();
+  myCar = mc ? {
+    id: mc.id, battery: mc.battery_pct ?? 73, cabin: mc.cabin_temp_c ?? 22,
+    chargeTo: mc.charge_target_pct ?? 80, kmPerPct: mc.km_per_pct ?? KM_PER_PCT,
+  } : null;
 }
 
 // Advance one vehicle in place; return any events it emitted.
@@ -146,6 +168,21 @@ const runTick = db.transaction(() => {
       generated++;
     }
   }
+
+  // driver car: reflect remote commands (charging fills battery, A/C eases cabin temp)
+  if (myCar) {
+    const d = getDesired.get(myCar.id) || { locked: 1, ac_on: 0, target_temp_c: 21, charging: 0 };
+    if (d.charging) myCar.battery = Math.min(myCar.chargeTo, myCar.battery + 0.6);
+    else myCar.battery = clamp(myCar.battery - 0.04, 0, 100);
+    const goal = d.ac_on ? d.target_temp_c : 24;
+    myCar.cabin = myCar.cabin + (goal - myCar.cabin) * 0.25;
+    updMyCar.run({
+      id: myCar.id, ts: new Date().toISOString(),
+      battery: Math.round(myCar.battery), range: Math.round(myCar.battery * myCar.kmPerPct),
+      cabin: Math.round(myCar.cabin), locked: d.locked, ac_on: d.ac_on, charging: d.charging,
+    });
+  }
+
   if (generated) pruneEvents.run(FLEET_EVENT_CAP);
 });
 

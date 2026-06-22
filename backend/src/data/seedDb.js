@@ -94,12 +94,21 @@ const seed = db.transaction(() => {
   for (const a of ALERTS_DRIVER)
     insEvent.run(myId, driverId[MYCAR_DRIVER], ts, a.icon, a.sev, a.icon, a.title, a.detail, "driver");
 
-  // trips
+  // trips — give each a real started/ended timestamp so the API can derive date/time/dur
   const insTrip = db.prepare(`INSERT INTO trips
     (vehicle_id, driver_id, started_at, ended_at, from_label, to_label, distance_km, score, event_count)
     VALUES (?,?,?,?,?,?,?,?,?)`);
-  for (const t of TRIPS)
-    insTrip.run(myId, driverId[MYCAR_DRIVER], ts, null, t.from, t.to, t.km, t.score, t.events);
+  const durMin = (s) => { const m = /(\d+)\s*min/.exec(s || ""); return m ? +m[1] : 15; };
+  let cursor = Date.now() - 2 * 3600000; // most recent trip ended ~2h ago
+  for (const t of TRIPS) {
+    const dur = durMin(t.dur);
+    const ended = cursor;
+    const started = ended - dur * 60000;
+    insTrip.run(myId, driverId[MYCAR_DRIVER],
+      new Date(started).toISOString(), new Date(ended).toISOString(),
+      t.from, t.to, t.km, t.score, t.events);
+    cursor = started - 3 * 3600000; // gap before the previous trip
+  }
 
   // driving score
   db.prepare(`INSERT INTO driving_scores

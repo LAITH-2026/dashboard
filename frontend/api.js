@@ -9,6 +9,16 @@
     return res.json();
   }
 
+  async function post(path, body) {
+    const res = await fetch(BASE + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  }
+
   window.SentryAPI = {
     base: BASE,
     health: () => get("/api/health"),
@@ -21,5 +31,10 @@
     getVehicle: (code) => get("/api/vehicles/" + encodeURIComponent(code)),
     getFleetAlerts: () => get("/api/fleet/alerts"),
     getFleetLive: () => get("/api/fleet/live"),
+    getDriverCar: () => get("/api/driver/car"),
+    getDriverAlerts: () => get("/api/driver/alerts"),
+    getDriverTrips: () => get("/api/driver/trips"),
+    getDriverScore: () => get("/api/driver/score"),
+    sendCommand: (payload) => post("/api/driver/command", payload),
   };
 })();

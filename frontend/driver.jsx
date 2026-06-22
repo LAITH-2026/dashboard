@@ -1,6 +1,7 @@
 // Driver view — companion app feel: at-a-glance, friendly density, large numbers
 
 const DriverHome = ({ car, locked, setLocked, acOn, setAcOn, targetTemp, setTargetTemp, charging, setCharging, goTo }) => {
+  const driverAlerts = useDriverAlerts();
   const [animating, setAnimating] = React.useState(false);
   const [acDial, setAcDial] = React.useState(targetTemp);
 
@@ -176,11 +177,11 @@ const DriverHome = ({ car, locked, setLocked, acOn, setAcOn, targetTemp, setTarg
       {/* Active alerts strip */}
       <div className="card" style={{ gridColumn: "1 / -1" }}>
         <div className="row" style={{ marginBottom: 14, justifyContent: "space-between" }}>
-          <div className="label">Active alerts · {ALERTS_DRIVER.length}</div>
+          <div className="label">Active alerts · {driverAlerts.length}</div>
           <button className="btn btn-ghost" style={{ padding: "4px 8px", fontSize: 12 }}>View all <Icon name="chevron-right" size={12} /></button>
         </div>
         <div className="grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          {ALERTS_DRIVER.map((a) => <AlertRow key={a.id} alert={a} compact />)}
+          {driverAlerts.map((a) => <AlertRow key={a.id} alert={a} compact />)}
         </div>
       </div>
     </div>
@@ -282,7 +283,9 @@ function polarToXY(cx, cy, r, angleDeg) {
 }
 
 // ─── DRIVER · TRIPS ────────────────────────────────────────────────
-const DriverTrips = () => (
+const DriverTrips = () => {
+  const trips = useTrips();
+  return (
   <div className="grid" style={{ gridTemplateColumns: "1fr", gap: "var(--gap)" }}>
     <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
       <StatCard label="This week" value="14" unit="trips" sub="vs 12 last week" trend={{ dir: "up", label: "+17%" }} />
@@ -311,8 +314,8 @@ const DriverTrips = () => (
           </tr>
         </thead>
         <tbody>
-          {TRIPS.map((t, i) => (
-            <tr key={t.id} style={{ borderBottom: i < TRIPS.length - 1 ? "1px solid var(--line)" : "none", transition: "background 140ms" }}
+          {trips.map((t, i) => (
+            <tr key={t.id} style={{ borderBottom: i < trips.length - 1 ? "1px solid var(--line)" : "none", transition: "background 140ms" }}
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface-hover)"}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
               <td style={{ padding: "14px 20px" }}>
@@ -350,7 +353,8 @@ const DriverTrips = () => (
       </table>
     </div>
   </div>
-);
+  );
+};
 
 // ─── DRIVER · DRIVING SCORE ───────────────────────────────────────
 const DriverScore = () => {
