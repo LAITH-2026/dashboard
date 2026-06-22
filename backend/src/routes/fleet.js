@@ -2,6 +2,7 @@
 // Reads from SQLite (written by the server-side engine, later by the CARLA bridge).
 const express = require("express");
 const db = require("../db");
+const { toScreen } = require("../world");
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ function listVehicles({ status, type, search } = {}) {
      LEFT JOIN drivers d ON d.id = v.driver_id
      WHERE ${where.join(" AND ")}
      ORDER BY v.code`
-  ).all(...params);
+  ).all(...params).map((r) => ({ ...r, coords: toScreen(r.world_x, r.world_y) }));
 }
 
 function listFleetAlerts() {
@@ -69,6 +70,7 @@ router.get("/vehicles/:code", (req, res) => {
      WHERE lower(v.code) = lower(?)`
   ).get(req.params.code);
   if (!row) return res.status(404).json({ error: `Vehicle ${req.params.code} not found` });
+  row.coords = toScreen(row.world_x, row.world_y);
   res.json(row);
 });
 

@@ -4,6 +4,7 @@
 // FIRST writer of vehicle_current; the CARLA bridge becomes a second writer in
 // step 5 using the same table, so the API read path never changes.
 const db = require("./db");
+const { fromScreen, toScreen } = require("./world");
 
 const TICK_MS = 1500;
 const KM_PER_PCT = 5.47;
@@ -62,7 +63,7 @@ function load() {
   const now = Date.now();
   fleet = rows.map((r) => ({
     id: r.id, code: r.code, driver_id: r.driver_id, type: r.type,
-    x: (r.world_x ?? 0) / 1000 + 0.5, y: (r.world_y ?? 0) / 1000 + 0.5,
+    x: toScreen(r.world_x, r.world_y).x, y: toScreen(r.world_x, r.world_y).y,
     heading: rand(0, Math.PI * 2),
     speed: r.speed_kmh || 0, status: r.status, score: r.safety_score,
     battery: r.battery_pct, fuel: r.fuel_pct,
@@ -154,8 +155,8 @@ const runTick = db.transaction(() => {
     upsert.run({
       vehicle_id: v.id,
       ts: new Date(v.lastActiveAt).toISOString(),
-      world_x: Math.round((v.x - 0.5) * 1000),
-      world_y: Math.round((v.y - 0.5) * 1000),
+      world_x: Math.round(fromScreen(v.x, v.y).wx),
+      world_y: Math.round(fromScreen(v.x, v.y).wy),
       heading_deg: Math.round((((v.heading * 180) / Math.PI) % 360 + 360) % 360),
       speed_kmh: Math.round(v.speed),
       status: v.status,

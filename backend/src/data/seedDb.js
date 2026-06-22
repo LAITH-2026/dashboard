@@ -1,6 +1,7 @@
 // Seed sentry.db from the existing mock data (./seed.js) into the new schema.
 // Idempotent: clears every table, then inserts. Run:  npm run seed
 const db = require("../db");
+const { fromScreen } = require("../world");
 const {
   DRIVER_NAMES, MY_CAR, ALERTS_DRIVER, TRIPS, DRIVING_SCORE, ALL_VEHICLES, FLEET_ALERTS,
 } = require("./seed");
@@ -8,6 +9,10 @@ const {
 const KM_PER_PCT = 5.47;
 const MYCAR_DRIVER = "Hussien";
 const ts = new Date().toISOString();
+// SENTRY_FLEET_SIZE=0 seeds NO synthetic fleet (just the my-car) — for CARLA-only testing.
+const FLEET_N = process.env.SENTRY_FLEET_SIZE != null
+  ? Math.max(0, parseInt(process.env.SENTRY_FLEET_SIZE, 10) || 0)
+  : ALL_VEHICLES.length;
 
 const seed = db.transaction(() => {
   // clear (children first, FK-safe)
@@ -38,13 +43,14 @@ const seed = db.transaction(() => {
   `);
   const codeId = {};
 
-  for (const v of ALL_VEHICLES) {
+  for (const v of ALL_VEHICLES.slice(0, FLEET_N)) {
     const id = insVehicle.run(v.id, driverId[v.driver] ?? null, v.make, v.model, v.type, "simulated", 0).lastInsertRowid;
     codeId[v.id] = id;
+    const w = fromScreen(v.coords.x, v.coords.y);
     insCurrent.run({
       vehicle_id: id, ts, source: "simulated", lat: null, lon: null,
-      // mock coords are 0..1 render-space → store as synthetic world-meters until CARLA feeds real lat/long
-      world_x: Math.round((v.coords.x - 0.5) * 1000), world_y: Math.round((v.coords.y - 0.5) * 1000),
+      // mock coords are 0..1 render-space → place into the shared world frame (meters)
+      world_x: Math.round(w.wx), world_y: Math.round(w.wy),
       heading_deg: null, speed_kmh: v.speed, status: v.status, safety_score: v.score,
       battery_pct: v.battery, fuel_pct: v.fuel,
       range_km: v.battery != null ? Math.round(v.battery * KM_PER_PCT) : null,
@@ -58,7 +64,7 @@ const seed = db.transaction(() => {
   codeId["MY-CAR"] = myId;
   insCurrent.run({
     vehicle_id: myId, ts, source: "simulated", lat: null, lon: null,
-    world_x: Math.round((MY_CAR.coords.x - 0.5) * 1000), world_y: Math.round((MY_CAR.coords.y - 0.5) * 1000),
+    world_x: Math.round(fromScreen(MY_CAR.coords.x, MY_CAR.coords.y).wx), world_y: Math.round(fromScreen(MY_CAR.coords.x, MY_CAR.coords.y).wy),
     heading_deg: null, speed_kmh: 0, status: "idle", safety_score: DRIVING_SCORE.current,
     battery_pct: MY_CAR.battery, fuel_pct: null, range_km: MY_CAR.range,
     cabin_temp_c: MY_CAR.cabinTemp, odometer_km: MY_CAR.odometer,
@@ -89,7 +95,7 @@ const seed = db.transaction(() => {
   const insEvent = db.prepare(`INSERT INTO events
     (vehicle_id, driver_id, ts, category, severity, icon, title, detail, audience)
     VALUES (?,?,?,?,?,?,?,?,?)`);
-  for (const a of FLEET_ALERTS)
+  if (FLEET_N > 0) for (const a of FLEET_ALERTS)
     insEvent.run(codeId[a.vehicle] ?? null, driverId[a.driver] ?? null, ts, a.icon, a.sev, a.icon, a.title, a.detail, "fleet");
   for (const a of ALERTS_DRIVER)
     insEvent.run(myId, driverId[MYCAR_DRIVER], ts, a.icon, a.sev, a.icon, a.title, a.detail, "driver");

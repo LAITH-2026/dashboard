@@ -2,6 +2,7 @@
 // + the remote-control seam. Reads/writes SQLite; the engine reflects commands.
 const express = require("express");
 const db = require("../db");
+const { toScreen } = require("../world");
 
 const router = express.Router();
 
@@ -52,7 +53,7 @@ router.get("/car", (_req, res) => {
     tirePsi: { fl: row.tire_fl_kpa, fr: row.tire_fr_kpa, rl: row.tire_rl_kpa, rr: row.tire_rr_kpa },
     lastLocation: row.location_label,
     lastUpdated: relTime(row.ts),
-    coords: { x: (row.world_x ?? 0) / 1000 + 0.5, y: (row.world_y ?? 0) / 1000 + 0.5 },
+    coords: toScreen(row.world_x, row.world_y),
   });
 });
 

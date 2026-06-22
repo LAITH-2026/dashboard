@@ -31,7 +31,7 @@
       id: v.code, make: v.make, model: v.model, type: v.type, driver: v.driver,
       status: v.status, score: v.safety_score,
       battery: v.battery_pct, fuel: v.fuel_pct, speed: v.speed_kmh,
-      coords: { x: (v.world_x ?? 0) / 1000 + 0.5, y: (v.world_y ?? 0) / 1000 + 0.5 },
+      coords: v.coords || { x: 0.5, y: 0.5 },
       lastActivity: relTime(v.ts),
       location: v.location_label,
       incidents: v.incidents,
