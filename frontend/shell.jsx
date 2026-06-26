@@ -121,16 +121,35 @@ function StatCard({ label, value, unit, sub, trend, icon }) {
 
 // ─── MAP ─────────────────────────────────────────────────────────────
 function MapPlaceholder({ pins = [], height = 320, focusId, onPinClick, label = "live map · simulated" }) {
+  // CARLA road network (carla/08_dashboard_map/export_town_map.py → town10hd_map.js).
+  // Roads are pre-projected into the 0..100 viewBox with the SAME bounds the backend's
+  // world.js toScreen() uses, so they share one coordinate frame with the pins below.
+  const townMap = (typeof window !== "undefined" && window.TOWN_MAP) || null;
   return (
     <div className="map" style={{ height, position: "relative" }}>
-      {/* Faux roads */}
+      {/* Roads: real CARLA road network when town10hd_map.js is loaded, else faux fallback.
+          preserveAspectRatio="none" stretches the square map to fill the panel; pins use
+          the same per-axis stretch (left/top %), so vehicles stay aligned to the roads. */}
       <svg className="map-roads" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: "100%", height: "100%" }}>
-        <path d="M-5,20 C20,18 40,28 60,22 C80,16 95,22 105,20" stroke="var(--line-strong)" strokeWidth="0.6" fill="none" />
-        <path d="M-5,55 C25,50 45,60 65,55 C85,50 95,55 105,55" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
-        <path d="M-5,80 C20,76 50,88 70,82 C85,78 95,82 105,80" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
-        <path d="M20,-5 C18,30 26,55 22,75 C20,95 22,105 22,105" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
-        <path d="M55,-5 C50,30 58,55 54,75 C52,95 55,105 55,105" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
-        <path d="M82,-5 C80,30 86,55 84,75 C82,95 84,105 84,105" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
+        {townMap && Array.isArray(townMap.roads) ? (
+          townMap.roads.map((road, i) => (
+            <polyline
+              key={i}
+              points={road.map((p) => `${p[0]},${p[1]}`).join(" ")}
+              stroke="var(--line-strong)" strokeWidth="0.5" fill="none"
+              strokeLinejoin="round" strokeLinecap="round"
+            />
+          ))
+        ) : (
+          <>
+            <path d="M-5,20 C20,18 40,28 60,22 C80,16 95,22 105,20" stroke="var(--line-strong)" strokeWidth="0.6" fill="none" />
+            <path d="M-5,55 C25,50 45,60 65,55 C85,50 95,55 105,55" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
+            <path d="M-5,80 C20,76 50,88 70,82 C85,78 95,82 105,80" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
+            <path d="M20,-5 C18,30 26,55 22,75 C20,95 22,105 22,105" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
+            <path d="M55,-5 C50,30 58,55 54,75 C52,95 55,105 55,105" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
+            <path d="M82,-5 C80,30 86,55 84,75 C82,95 84,105 84,105" stroke="var(--line-strong)" strokeWidth="0.5" fill="none" />
+          </>
+        )}
       </svg>
 
       {/* Pins */}

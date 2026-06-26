@@ -4,13 +4,16 @@
 // FIRST writer of vehicle_current; the CARLA bridge becomes a second writer in
 // step 5 using the same table, so the API read path never changes.
 const db = require("./db");
-const { fromScreen, toScreen } = require("./world");
+const { fromScreen, toScreen, BOUNDS } = require("./world");
+const roadnet = require("./roadnet");
 
 const TICK_MS = 1500;
 const KM_PER_PCT = 5.47;
 const ALERT_GATE = 0.45;       // chance a generated event reaches the feed
 const FLEET_EVENT_CAP = 60;    // keep the fleet feed bounded
 const CARLA_TTL_MS = 6000;     // a vehicle with a CARLA frame newer than this is owned by ingest
+// meters per 1.0 of screen-space, averaged over both axes — converts km/h to map travel
+const METERS_PER_SCREEN = ((BOUNDS.maxX - BOUNDS.minX) + (BOUNDS.maxY - BOUNDS.minY)) / 2;
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -74,6 +77,15 @@ function load() {
       : now - rand(2, 42) * 3600000,
   }));
 
+  // Put each synthetic vehicle ONTO the CARLA road network so it drives on real roads.
+  // (Seeded coords are random 0..1; snap to the nearest road and give it a path to walk.)
+  if (roadnet.ready()) {
+    for (const v of fleet) {
+      const p = roadnet.snap(v.x, v.y);
+      if (p) { v.path = p.state; v.x = p.x; v.y = p.y; v.heading = p.heading; }
+    }
+  }
+
   const mc = db.prepare(`
     SELECT c.vehicle_id AS id, c.battery_pct, c.cabin_temp_c, s.charge_target_pct, s.km_per_pct
     FROM vehicle_current c
@@ -103,7 +115,6 @@ function stepVehicle(v) {
 
   if (v.status === "active") {
     v.lastActiveAt = Date.now();
-    v.heading += rand(-0.4, 0.4);
     const target = rand(40, 110);
     const prev = v.speed;
     v.speed += (target - v.speed) * 0.25;
@@ -115,12 +126,20 @@ function stepVehicle(v) {
         detail: `Hard braking · ${Math.round(prev)} → ${Math.round(v.speed)} km/h` });
     }
 
-    const dist = (v.speed / 100) * 0.018;
-    let x = v.x + Math.cos(v.heading) * dist;
-    let y = v.y + Math.sin(v.heading) * dist;
-    if (x < 0.04 || x > 0.96) { v.heading = Math.PI - v.heading; x = clamp(x, 0.04, 0.96); }
-    if (y < 0.04 || y > 0.96) { v.heading = -v.heading; y = clamp(y, 0.04, 0.96); }
-    v.x = x; v.y = y;
+    // follow the CARLA road network when loaded; else legacy free-roam walk
+    if (v.path && roadnet.ready()) {
+      const ds = (v.speed / 3.6) * (TICK_MS / 1000) / METERS_PER_SCREEN; // screen units this tick
+      const p = roadnet.advance(v.path, ds);
+      v.x = p.x; v.y = p.y; v.heading = p.heading;
+    } else {
+      v.heading += rand(-0.4, 0.4);
+      const dist = (v.speed / 100) * 0.018;
+      let x = v.x + Math.cos(v.heading) * dist;
+      let y = v.y + Math.sin(v.heading) * dist;
+      if (x < 0.04 || x > 0.96) { v.heading = Math.PI - v.heading; x = clamp(x, 0.04, 0.96); }
+      if (y < 0.04 || y > 0.96) { v.heading = -v.heading; y = clamp(y, 0.04, 0.96); }
+      v.x = x; v.y = y;
+    }
 
     if (v.type === "ev" && v.battery != null) {
       const b = clamp(v.battery - 0.15, 0, 100);

@@ -4,13 +4,15 @@
 // for the map, so the frontend never has to know the bounds.
 //
 // Tune the bounds to your CARLA map via env (SENTRY_WORLD_MIN_X, _MAX_X, _MIN_Y,
-// _MAX_Y). Defaults comfortably cover Town10HD; tighten them for a CARLA-only test
-// to make a few cars fill the map.
+// _MAX_Y). Defaults are Town10HD's true road bbox, measured by
+// carla/08_dashboard_map/export_town_map.py — they MUST match the bounds baked into
+// frontend/town10hd_map.js so vehicle pins land on the rendered roads. Re-run that
+// exporter (it prints these values) if you switch CARLA maps.
 const BOUNDS = {
-  minX: Number(process.env.SENTRY_WORLD_MIN_X ?? -150),
-  maxX: Number(process.env.SENTRY_WORLD_MAX_X ?? 150),
-  minY: Number(process.env.SENTRY_WORLD_MIN_Y ?? -150),
-  maxY: Number(process.env.SENTRY_WORLD_MAX_Y ?? 150),
+  minX: Number(process.env.SENTRY_WORLD_MIN_X ?? -123.6),
+  maxX: Number(process.env.SENTRY_WORLD_MAX_X ?? 119.0),
+  minY: Number(process.env.SENTRY_WORLD_MIN_Y ?? -77.1),
+  maxY: Number(process.env.SENTRY_WORLD_MAX_Y ?? 149.6),
 };
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
